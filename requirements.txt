@@ -1,0 +1,19 @@
+# Core server
+fastapi==0.135.3
+uvicorn==0.44.0
+pydantic==2.12.5
+httpx==0.28.1
+
+# GraphQL
+strawberry-graphql[fastapi]==0.261.0
+
+# SQL databases
+pyodbc==5.3.0          # SQL Server / Azure SQL
+psycopg2-binary==2.9.11  # PostgreSQL / AWS RDS PG
+pymysql==1.1.1           # MySQL / AWS RDS MySQL / Aurora
+
+# Azure CosmosDB
+azure-cosmos==4.9.0
+
+# AWS Bedrock / RDS
+boto3==1.38.0

@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  mcp-db-server:
+    build: .
+    container_name: universal-mcp-db
+    ports:
+      - "7654:7654"
+    volumes:
+      - ./config.json:/app/config.json   # live config — edit & restart
+      - ./data:/app/data                 # SQLite db files live here
+    environment:
+      - SQL_PASSWORD=${SQL_PASSWORD:-}
+      - PG_PASSWORD=${PG_PASSWORD:-}
+    restart: unless-stopped

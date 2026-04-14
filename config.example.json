@@ -1,0 +1,59 @@
+{
+  "connections": [
+    {
+      "id": "local-sqlite",
+      "name": "Local SQLite (demo)",
+      "type": "sqlite",
+      "database": "./demo.db",
+      "role": "read-only",
+      "tables": ["customers", "orders"]
+    },
+    {
+      "id": "my-azure-sql",
+      "name": "Azure SQL",
+      "type": "mssql",
+      "server": "myserver.database.windows.net",
+      "database": "mydb",
+      "username": "sqladmin",
+      "password": "YOUR_PASSWORD_HERE",
+      "port": 1433,
+      "role": "read-only",
+      "tables": ["*"]
+    },
+    {
+      "id": "my-postgres",
+      "name": "PostgreSQL",
+      "type": "postgres",
+      "server": "myhost.postgres.database.azure.com",
+      "database": "mydb",
+      "username": "pgadmin",
+      "password": "YOUR_PASSWORD_HERE",
+      "port": 5432,
+      "role": "read-write",
+      "tables": ["users", "orders"]
+    },
+    {
+      "id": "my-cosmos",
+      "name": "Azure CosmosDB",
+      "type": "cosmosdb",
+      "server": "https://myaccount.documents.azure.com:443/",
+      "database": "mydb",
+      "password": "YOUR_COSMOS_KEY_HERE",
+      "tables": ["*"]
+    },
+    {
+      "id": "my-bedrock",
+      "name": "AWS Bedrock KB",
+      "type": "bedrock-kb",
+      "region": "us-east-1",
+      "aws_access_key_id": "YOUR_ACCESS_KEY_ID",
+      "aws_secret_access_key": "YOUR_SECRET_KEY",
+      "knowledge_bases": ["*"],
+      "tables": ["*"]
+    }
+  ],
+  "server": {
+    "host": "0.0.0.0",
+    "port": 7654
+  }
+}

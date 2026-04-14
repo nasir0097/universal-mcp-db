@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install fastapi uvicorn strawberry-graphql[fastapi] pymysql psycopg2-binary httpx pytest pytest-asyncio httpx
+
+      - name: Copy example config
+        run: cp config.example.json config.json
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install bandit
+        run: pip install bandit
+
+      - name: Run security scan
+        run: bandit -r server.py db.py roles.py -ll
+
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t universal-mcp-db .
+
+      - name: Smoke test container
+        run: |
+          cp config.example.json config.json
+          docker run -d --name test-server -p 7654:7654 -v $(pwd)/config.json:/app/config.json universal-mcp-db
+          sleep 3
+          curl -f http://localhost:7654/health
+          docker stop test-server

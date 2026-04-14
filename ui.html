@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Universal MCP DB Manager</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+  .layout{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+  .sidebar{background:#1a1d27;border-right:1px solid #2d3748;display:flex;flex-direction:column}
+  .main{display:flex;flex-direction:column;min-height:100vh}
+  .sidebar-header{padding:20px;border-bottom:1px solid #2d3748}
+  .sidebar-header h1{font-size:14px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase}
+  .sidebar-header p{font-size:11px;color:#64748b;margin-top:4px}
+  .conn-list{flex:1;overflow-y:auto;padding:12px}
+  .conn-item{padding:12px;border-radius:8px;margin-bottom:8px;cursor:pointer;border:1px solid transparent;transition:all .15s;position:relative}
+  .conn-item:hover{background:#252836;border-color:#3d4460}
+  .conn-item.active{background:#1e1b4b;border-color:#6d28d9}
+  .conn-name{font-size:13px;font-weight:600;color:#e2e8f0}
+  .conn-type{font-size:11px;color:#64748b;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+  .conn-role{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;text-transform:uppercase}
+  .role-read-only{background:#1e3a5f;color:#60a5fa}
+  .role-read-write{background:#1a3a2a;color:#4ade80}
+  .role-admin{background:#3b1a1a;color:#f87171}
+  .conn-delete{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:4px;background:transparent;border:none;color:#4a5568;cursor:pointer;font-size:14px;display:none;align-items:center;justify-content:center;transition:all .15s}
+  .conn-item:hover .conn-delete{display:flex}
+  .conn-delete:hover{background:#7f1d1d;color:#fca5a5}
+  .add-conn-btn{margin:12px;padding:10px;border-radius:8px;background:#2d1f6e;border:1px dashed #6d28d9;color:#a78bfa;font-size:13px;cursor:pointer;text-align:center;transition:all .15s}
+  .add-conn-btn:hover{background:#3b2a85}
+  .topbar{padding:16px 24px;border-bottom:1px solid #2d3748;background:#1a1d27;display:flex;align-items:center;gap:12px}
+  .topbar h2{font-size:15px;font-weight:600;flex:1}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 6px #4ade80;flex-shrink:0}
+  .mcp-url{font-size:11px;color:#64748b;background:#0f1117;padding:4px 10px;border-radius:6px;border:1px solid #2d3748;font-family:monospace;cursor:pointer}
+  .mcp-url:hover{color:#a78bfa;border-color:#6d28d9}
+  .tabs{display:flex;gap:4px;padding:12px 24px;border-bottom:1px solid #2d3748;background:#13151f}
+  .tab{padding:6px 16px;border-radius:6px;font-size:13px;cursor:pointer;color:#64748b;transition:all .15s}
+  .tab.active{background:#1e1b4b;color:#a78bfa}
+  .tab:hover:not(.active){color:#e2e8f0}
+  .content{flex:1;padding:24px;overflow-y:auto}
+  .query-box{background:#1a1d27;border:1px solid #2d3748;border-radius:10px;overflow:hidden;margin-bottom:16px}
+  .query-box-header{padding:10px 16px;background:#13151f;border-bottom:1px solid #2d3748;font-size:12px;color:#64748b;display:flex;justify-content:space-between;align-items:center}
+  textarea{width:100%;background:transparent;border:none;color:#e2e8f0;font-family:'Cascadia Code','Consolas',monospace;font-size:13px;padding:16px;resize:vertical;min-height:100px;outline:none;line-height:1.6}
+  .query-actions{padding:10px 16px;background:#13151f;border-top:1px solid #2d3748;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{padding:8px 18px;border-radius:6px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+  .btn-primary{background:#6d28d9;color:white}
+  .btn-primary:hover{background:#7c3aed}
+  .btn-primary:disabled{background:#3d2a6e;color:#64748b;cursor:not-allowed}
+  .btn-secondary{background:#1e293b;color:#94a3b8;border:1px solid #2d3748}
+  .btn-secondary:hover{background:#263244}
+  .btn-success{background:#14532d;color:#4ade80;border:1px solid #166534}
+  .btn-success:hover{background:#166534}
+  .btn-danger{background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b}
+  .btn-danger:hover{background:#991b1b}
+  .btn-sm{padding:5px 12px;font-size:12px}
+  .results{background:#1a1d27;border:1px solid #2d3748;border-radius:10px;overflow:hidden}
+  .results-header{padding:10px 16px;background:#13151f;border-bottom:1px solid #2d3748;font-size:12px;color:#64748b;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .results-body{overflow-x:auto;max-height:420px;overflow-y:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{padding:10px 14px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #2d3748;background:#13151f;white-space:nowrap;position:sticky;top:0}
+  td{padding:9px 14px;border-bottom:1px solid #1e2433;color:#e2e8f0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  tr:hover td{background:#1e2433}
+  .no-results{padding:40px;text-align:center;color:#4a5568;font-size:13px}
+  .error-msg{padding:16px;color:#f87171;background:#1a0a0a;border-left:3px solid #dc2626;font-family:monospace;font-size:12px;white-space:pre-wrap}
+  .schema-table{margin-bottom:16px;background:#1a1d27;border:1px solid #2d3748;border-radius:10px;overflow:hidden}
+  .schema-table-header{padding:12px 16px;background:#13151f;border-bottom:1px solid #2d3748;font-size:13px;font-weight:700;color:#a78bfa;display:flex;align-items:center;gap:8px}
+  .schema-col{padding:8px 16px;border-bottom:1px solid #1e2433;font-size:12px;display:flex;gap:12px}
+  .schema-col:last-child{border-bottom:none}
+  .col-name{color:#e2e8f0;font-family:monospace;min-width:160px}
+  .col-type{color:#64748b;font-family:monospace}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:#1a1d27;border:1px solid #2d3748;border-radius:12px;padding:24px;width:500px;max-height:85vh;overflow-y:auto}
+  .modal h3{font-size:16px;font-weight:700;margin-bottom:20px;color:#a78bfa}
+  .form-group{margin-bottom:14px}
+  .form-group label{display:block;font-size:11px;color:#94a3b8;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .form-group input,.form-group select{width:100%;padding:9px 12px;background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;transition:border-color .15s}
+  .form-group input:focus,.form-group select:focus{border-color:#6d28d9}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+  .test-result{margin-top:8px;padding:8px 12px;border-radius:6px;font-size:12px;display:none}
+  .test-ok{background:#14532d;color:#4ade80;display:block}
+  .test-fail{background:#3b0a0a;color:#f87171;display:block}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid #6d28d9;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:5px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:300px;color:#4a5568;gap:12px}
+  .empty-state .icon{font-size:48px}
+  .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:200;animation:fadeIn .2s ease;pointer-events:none}
+  .toast-ok{background:#14532d;color:#4ade80;border:1px solid #166534}
+  .toast-err{background:#3b0a0a;color:#f87171;border:1px solid #7f1d1d}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .db-type-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-left:6px}
+  .badge-sqlite{background:#1e3a5f;color:#60a5fa}
+  .badge-mssql{background:#1a2e1a;color:#4ade80}
+  .badge-postgres{background:#2d1f6e;color:#a78bfa}
+  .badge-mysql{background:#3b2a00;color:#fbbf24}
+  .badge-cosmos{background:#1a1a3e;color:#818cf8}
+  .badge-bedrock{background:#1a2e2e;color:#34d399}
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>MCP DB Manager</h1>
+      <p>Universal Database MCP Server</p>
+    </div>
+    <div class="conn-list" id="connList"></div>
+    <div class="add-conn-btn" onclick="openModal()">+ Add Connection</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="status-dot"></div>
+      <h2 id="topbarTitle">Select a connection</h2>
+      <span class="mcp-url" id="mcpUrl" onclick="copyMcpUrl()" title="Click to copy">http://localhost:7654/mcp</span>
+    </div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('query')">Query</div>
+      <div class="tab" onclick="switchTab('schema')">Schema</div>
+    </div>
+    <div class="content" id="mainContent">
+      <div class="empty-state">
+        <div class="icon">🗄️</div>
+        <p>Select a connection from the sidebar</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Connection Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3>Add Database Connection</h3>
+    <div class="form-group">
+      <label>Display Name</label>
+      <input type="text" id="f_name" placeholder="e.g. Production Azure SQL">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Connection ID</label>
+        <input type="text" id="f_id" placeholder="e.g. prod-sql">
+      </div>
+      <div class="form-group">
+        <label>Database Type</label>
+        <select id="f_type" onchange="onTypeChange()">
+          <option value="sqlite">SQLite (local file)</option>
+          <option value="mssql">SQL Server / Azure SQL</option>
+          <option value="postgres">PostgreSQL</option>
+          <option value="awsrds-postgres">AWS RDS (PostgreSQL)</option>
+          <option value="mysql">MySQL</option>
+          <option value="awsrds-mysql">AWS RDS (MySQL)</option>
+          <option value="aurora-mysql">AWS Aurora (MySQL)</option>
+          <option value="cosmosdb">Azure CosmosDB (NoSQL)</option>
+          <option value="bedrock-kb">AWS Bedrock Knowledge Base</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="sqliteFields">
+      <div class="form-group">
+        <label>Database File Path</label>
+        <input type="text" id="f_sqlite_path" placeholder="./mydb.db  or  C:/data/mydb.db">
+      </div>
+    </div>
+
+    <div id="serverFields" style="display:none">
+      <div class="form-group">
+        <label>Server / Host</label>
+        <input type="text" id="f_server" placeholder="e.g. myserver.database.windows.net">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Database Name</label>
+          <input type="text" id="f_database" placeholder="e.g. mydb">
+        </div>
+        <div class="form-group">
+          <label>Port</label>
+          <input type="text" id="f_port" placeholder="1433">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="f_username" placeholder="sqladmin">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="f_password" placeholder="••••••••">
+        </div>
+      </div>
+    </div>
+
+    <!-- CosmosDB fields -->
+    <div id="cosmosFields" style="display:none">
+      <div class="form-group">
+        <label>Cosmos Endpoint URL</label>
+        <input type="text" id="f_cosmos_endpoint" placeholder="https://myaccount.documents.azure.com:443/">
+      </div>
+      <div class="form-group">
+        <label>Database Name</label>
+        <input type="text" id="f_cosmos_db" placeholder="e.g. mydb">
+      </div>
+      <div class="form-group">
+        <label>Primary Key</label>
+        <input type="password" id="f_cosmos_key" placeholder="your Cosmos primary key">
+      </div>
+      <div class="form-group">
+        <label>Containers to expose (comma-separated, or * for all)</label>
+        <input type="text" id="f_cosmos_tables" placeholder="orders, products, users  or  *">
+      </div>
+    </div>
+
+    <!-- AWS Bedrock KB fields -->
+    <div id="bedrockFields" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label>AWS Region</label>
+          <input type="text" id="f_bedrock_region" placeholder="us-east-1">
+        </div>
+        <div class="form-group">
+          <label>Access Key ID</label>
+          <input type="text" id="f_bedrock_key_id" placeholder="AKIAIOSFODNN7EXAMPLE">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Secret Access Key</label>
+        <input type="password" id="f_bedrock_secret" placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY">
+      </div>
+      <div class="form-group">
+        <label>Knowledge Base IDs to expose (comma-separated, or * for all)</label>
+        <input type="text" id="f_bedrock_kbs" placeholder="KBID1234, KBID5678  or  *">
+      </div>
+    </div>
+
+    <!-- Tables filter (shown for SQL types) -->
+    <div id="tablesField" style="display:none">
+      <div class="form-group">
+        <label>Tables to expose (comma-separated, or * for all)</label>
+        <input type="text" id="f_tables" placeholder="customers, orders, products  or  *">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Role / Permissions</label>
+      <select id="f_role">
+        <option value="read-only">Read Only  — SELECT only</option>
+        <option value="read-write">Read + Write  — INSERT, UPDATE, DELETE (no DDL)</option>
+        <option value="admin">Admin  — full access including DDL</option>
+      </select>
+    </div>
+
+    <div id="testResult" class="test-result"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="saveConnection()">Add Connection</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:7654';
+let connections = [];
+let activeConn  = null;
+let activeTab   = 'query';
+let lastRows    = [];
+
+async function init() {
+  try {
+    const res  = await fetch(`${API}/health`);
+    const data = await res.json();
+    connections = data.connections;
+    renderSidebar();
+  } catch { showToast('Cannot reach server at ' + API, false); }
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function badgeClass(type) {
+  if (type === 'sqlite') return 'badge-sqlite';
+  if (type === 'mssql' || type === 'azuresql') return 'badge-mssql';
+  if (type.includes('postgres')) return 'badge-postgres';
+  if (type === 'cosmosdb' || type === 'cosmos') return 'badge-cosmos';
+  if (type === 'bedrock-kb' || type === 'aws-bedrock') return 'badge-bedrock';
+  return 'badge-mysql';
+}
+function badgeLabel(type) {
+  const map = {
+    sqlite:'SQLite', mssql:'Azure SQL', azuresql:'Azure SQL',
+    postgres:'PG', postgresql:'PG', 'awsrds-postgres':'AWS PG',
+    mysql:'MySQL', 'awsrds-mysql':'AWS MySQL', 'aurora-mysql':'Aurora',
+    cosmosdb:'CosmosDB', cosmos:'CosmosDB',
+    'bedrock-kb':'Bedrock KB', 'aws-bedrock':'Bedrock KB'
+  };
+  return map[type] || type;
+}
+
+function renderSidebar() {
+  document.getElementById('connList').innerHTML = connections.map(c => `
+    <div class="conn-item ${activeConn?.id===c.id?'active':''}" onclick="selectConn('${c.id}')">
+      <button class="conn-delete" onclick="event.stopPropagation();deleteConn('${c.id}')" title="Remove">✕</button>
+      <div class="conn-name">${c.name}</div>
+      <div class="conn-type">${c.id} <span class="db-type-badge ${badgeClass(c.type||'')}"> ${badgeLabel(c.type||'')}</span></div>
+      <span class="conn-role role-${c.role}">${c.role}</span>
+    </div>
+  `).join('');
+}
+
+function selectConn(id) {
+  activeConn = connections.find(c => c.id === id);
+  renderSidebar();
+  document.getElementById('topbarTitle').textContent = activeConn.name;
+  switchTab(activeTab);
+}
+
+async function deleteConn(id) {
+  if (!confirm(`Remove connection "${id}"?`)) return;
+  const res = await fetch(`${API}/connections/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    connections = connections.filter(c => c.id !== id);
+    if (activeConn?.id === id) {
+      activeConn = null;
+      document.getElementById('topbarTitle').textContent = 'Select a connection';
+      document.getElementById('mainContent').innerHTML = `<div class="empty-state"><div class="icon">🗄️</div><p>Select a connection from the sidebar</p></div>`;
+    }
+    renderSidebar();
+    showToast('Connection removed');
+  }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['query','schema'][i]===tab));
+  if (!activeConn) return;
+  tab === 'query' ? renderQueryPanel() : loadSchema();
+}
+
+// ── Query ─────────────────────────────────────────────────────────────────────
+function renderQueryPanel() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="query-box">
+      <div class="query-box-header">
+        <span>SQL Query</span>
+        <span style="color:#4a5568">Role: <b style="color:#94a3b8">${activeConn.role}</b></span>
+      </div>
+      <textarea id="sqlInput" placeholder="SELECT * FROM your_table LIMIT 100" spellcheck="false" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')runQuery()"></textarea>
+      <div class="query-actions">
+        <button class="btn btn-primary" id="runBtn" onclick="runQuery()">&#9654; Run  <span style="font-size:10px;opacity:.6">Ctrl+Enter</span></button>
+        <button class="btn btn-secondary" onclick="document.getElementById('sqlInput').value=''">Clear</button>
+        <button class="btn btn-success btn-sm" id="csvBtn" style="display:none" onclick="exportCSV()">&#8595; CSV</button>
+        <span id="queryStatus" style="font-size:12px;color:#64748b;margin-left:auto"></span>
+      </div>
+    </div>
+    <div id="resultsArea"></div>`;
+}
+
+async function runQuery() {
+  const sql = document.getElementById('sqlInput').value.trim();
+  if (!sql) return;
+  const btn = document.getElementById('runBtn');
+  const status = document.getElementById('queryStatus');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Running...';
+  status.textContent = '';
+  document.getElementById('csvBtn').style.display = 'none';
+
+  const t0  = Date.now();
+  const res  = await fetch(`${API}/mcp`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ jsonrpc:'2.0', id:Date.now(), method:'tools/call',
+      params:{ name:`${activeConn.id}__query`, arguments:{ sql } } }) });
+  const data = await res.json();
+  const ms   = Date.now() - t0;
+
+  btn.disabled = false; btn.innerHTML = '&#9654; Run  <span style="font-size:10px;opacity:.6">Ctrl+Enter</span>';
+
+  const text    = data.result?.content?.[0]?.text || '';
+  const isError = data.result?.isError;
+
+  if (isError) {
+    document.getElementById('resultsArea').innerHTML = `<div class="results"><div class="error-msg">${text}</div></div>`;
+    return;
+  }
+  try {
+    lastRows = JSON.parse(text);
+    if (!Array.isArray(lastRows)) throw 0;
+    renderTable(lastRows, ms);
+    if (lastRows.length) document.getElementById('csvBtn').style.display = '';
+  } catch {
+    document.getElementById('resultsArea').innerHTML = `<div class="results"><div style="padding:16px;font-family:monospace;font-size:12px;color:#94a3b8">${text}</div></div>`;
+  }
+}
+
+function renderTable(rows, ms) {
+  if (!rows.length) { document.getElementById('resultsArea').innerHTML=`<div class="results"><div class="no-results">No rows returned</div></div>`; return; }
+  const cols  = Object.keys(rows[0]);
+  const thead = `<tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>`;
+  const tbody = rows.map(r=>`<tr>${cols.map(c=>`<td title="${r[c]??''}">${r[c]??''}</td>`).join('')}</tr>`).join('');
+  document.getElementById('resultsArea').innerHTML = `
+    <div class="results">
+      <div class="results-header">
+        <span>${rows.length} row${rows.length!==1?'s':''}</span>
+        <span style="color:#4a5568">${ms}ms</span>
+      </div>
+      <div class="results-body"><table><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>
+    </div>`;
+}
+
+function exportCSV() {
+  if (!lastRows.length) return;
+  const cols = Object.keys(lastRows[0]);
+  const csv  = [cols.join(','), ...lastRows.map(r => cols.map(c => JSON.stringify(r[c]??'')).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `${activeConn.id}-export.csv`;
+  a.click();
+  showToast('CSV exported');
+}
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+async function loadSchema() {
+  document.getElementById('mainContent').innerHTML = `<div class="no-results"><span class="spinner"></span> Loading schema...</div>`;
+  const res  = await fetch(`${API}/mcp`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ jsonrpc:'2.0', id:Date.now(), method:'tools/call',
+      params:{ name:`${activeConn.id}__schema`, arguments:{} } }) });
+  const data = await res.json();
+  const text = data.result?.content?.[0]?.text || '';
+
+  const tables = {};
+  let cur = null;
+  for (const line of text.split('\n')) {
+    const prefixes = ['Table: ', 'Container: ', 'Knowledge Base: '];
+    const prefix = prefixes.find(p => line.startsWith(p));
+    if (prefix) { cur = line.replace(prefix,''); tables[cur]=[]; }
+    else if (line.trim().startsWith('- ') && cur) tables[cur].push(line.trim().slice(2));
+  }
+  const typeIcon = activeConn?.type === 'cosmosdb' ? '&#127757;' : activeConn?.type === 'bedrock-kb' ? '&#129504;' : '&#128203;';
+  document.getElementById('mainContent').innerHTML = Object.entries(tables).map(([t,cols])=>`
+    <div class="schema-table">
+      <div class="schema-table-header">${typeIcon} ${t} <span style="font-size:11px;font-weight:400;color:#64748b">(${cols.length} fields)</span></div>
+      ${cols.map(c=>{const[name,...rest]=c.split(' ');return`<div class="schema-col"><span class="col-name">${name}</span><span class="col-type">${rest.join(' ')}</span></div>`}).join('')}
+    </div>`).join('') || '<div class="no-results">No tables found</div>';
+}
+
+// ── Add Connection Modal ──────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('testResult').className = 'test-result';
+  document.getElementById('testResult').textContent = '';
+  // reset type to sqlite and show correct fields
+  document.getElementById('f_type').value = 'sqlite';
+  onTypeChange();
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+function onTypeChange() {
+  const t = document.getElementById('f_type').value;
+  const isSqlite  = t === 'sqlite';
+  const isCosmos  = t === 'cosmosdb' || t === 'cosmos';
+  const isBedrock = t === 'bedrock-kb' || t === 'aws-bedrock';
+  const isSql     = !isSqlite && !isCosmos && !isBedrock;
+
+  document.getElementById('sqliteFields').style.display  = isSqlite  ? '' : 'none';
+  document.getElementById('serverFields').style.display  = isSql     ? '' : 'none';
+  document.getElementById('cosmosFields').style.display  = isCosmos  ? '' : 'none';
+  document.getElementById('bedrockFields').style.display = isBedrock ? '' : 'none';
+  document.getElementById('tablesField').style.display   = isSql || isSqlite ? '' : 'none';
+
+  const portMap = { postgres:'5432', 'awsrds-postgres':'5432', mysql:'3306', 'awsrds-mysql':'3306', 'aurora-mysql':'3306', mssql:'1433', azuresql:'1433' };
+  if (isSql) document.getElementById('f_port').placeholder = portMap[t] || '1433';
+}
+
+function parseTables(raw) {
+  if (!raw || raw.trim() === '*') return ['*'];
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function buildConnObj() {
+  const type = document.getElementById('f_type').value;
+  const conn = {
+    id:   document.getElementById('f_id').value.trim(),
+    name: document.getElementById('f_name').value.trim(),
+    type,
+    role: document.getElementById('f_role').value
+  };
+
+  if (type === 'sqlite') {
+    conn.database = document.getElementById('f_sqlite_path').value.trim();
+    conn.tables   = parseTables(document.getElementById('f_tables').value);
+  } else if (type === 'cosmosdb' || type === 'cosmos') {
+    conn.server   = document.getElementById('f_cosmos_endpoint').value.trim();
+    conn.database = document.getElementById('f_cosmos_db').value.trim();
+    conn.password = document.getElementById('f_cosmos_key').value.trim();
+    conn.tables   = parseTables(document.getElementById('f_cosmos_tables').value);
+  } else if (type === 'bedrock-kb' || type === 'aws-bedrock') {
+    conn.region              = document.getElementById('f_bedrock_region').value.trim();
+    conn.aws_access_key_id   = document.getElementById('f_bedrock_key_id').value.trim();
+    conn.aws_secret_access_key = document.getElementById('f_bedrock_secret').value.trim();
+    conn.knowledge_bases     = parseTables(document.getElementById('f_bedrock_kbs').value);
+    conn.tables              = conn.knowledge_bases;
+  } else {
+    conn.server   = document.getElementById('f_server').value.trim();
+    conn.database = document.getElementById('f_database').value.trim();
+    conn.username = document.getElementById('f_username').value.trim();
+    conn.password = document.getElementById('f_password').value.trim();
+    conn.port     = parseInt(document.getElementById('f_port').value) || null;
+    conn.tables   = parseTables(document.getElementById('f_tables').value);
+  }
+  return conn;
+}
+
+async function testConnection() {
+  const conn   = buildConnObj();
+  const tr     = document.getElementById('testResult');
+  tr.className = 'test-result'; tr.textContent = 'Testing...';
+  const res  = await fetch(`${API}/connections/test`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(conn) });
+  const data = await res.json();
+  if (data.ok) { tr.className = 'test-result test-ok'; tr.textContent = '✓ ' + data.message; }
+  else         { tr.className = 'test-result test-fail'; tr.textContent = '✗ ' + data.error; }
+}
+
+async function saveConnection() {
+  const conn = buildConnObj();
+  if (!conn.id || !conn.name) { showToast('ID and Name are required', false); return; }
+  const res  = await fetch(`${API}/connections`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(conn) });
+  const data = await res.json();
+  if (data.error) { showToast(data.error, false); return; }
+  connections.push({ id:conn.id, name:conn.name, role:conn.role, type:conn.type });
+  renderSidebar();
+  closeModal();
+  showToast(`"${conn.name}" added`);
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function copyMcpUrl() {
+  navigator.clipboard.writeText('http://localhost:7654/mcp');
+  showToast('MCP URL copied to clipboard');
+}
+
+function showToast(msg, ok=true) {
+  const t = document.createElement('div');
+  t.className = `toast ${ok?'toast-ok':'toast-err'}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+init();
+</script>
+</body>
+</html>
