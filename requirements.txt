@@ -1,7 +1,7 @@
 # Core server
 fastapi==0.135.3
 uvicorn==0.44.0
-pydantic==2.12.5
+pydantic==2.10.6
 httpx==0.28.1
 
 # GraphQL
