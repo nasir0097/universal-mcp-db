@@ -47,12 +47,120 @@ def _safe_row_id(row_id: str) -> int:
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 
 def load_config():
+    # If MCP_CONNECTION_ID env var is set, build config from environment
+    # This allows container deployments without mounting a config.json
+    if os.environ.get("MCP_CONNECTION_ID"):
+        tables_raw = os.environ.get("MCP_TABLES", "*")
+        tables = [t.strip() for t in tables_raw.split(",")] if tables_raw != "*" else ["*"]
+        conn = {
+            "id":       os.environ["MCP_CONNECTION_ID"],
+            "name":     os.environ.get("MCP_CONNECTION_NAME", os.environ["MCP_CONNECTION_ID"]),
+            "type":     os.environ.get("MCP_CONNECTION_TYPE", "mssql"),
+            "server":   os.environ.get("MCP_SERVER", ""),
+            "database": os.environ.get("MCP_DATABASE", ""),
+            "username": os.environ.get("MCP_USERNAME", ""),
+            "password": os.environ.get("MCP_PASSWORD", ""),
+            "port":     int(os.environ["MCP_PORT"]) if os.environ.get("MCP_PORT") else None,
+            "role":     os.environ.get("MCP_ROLE", "read-only"),
+            "tables":   tables,
+        }
+        config = {
+            "connections": [conn],
+            "server": {
+                "host": os.environ.get("HOST", "0.0.0.0"),
+                "port": int(os.environ.get("PORT", 7654))
+            }
+        }
+        return _resolve_vault_secrets(config)
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+    return _resolve_vault_secrets(config)
 
 def save_config(config):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
+
+
+# ── HashiCorp Vault secret resolution ─────────────────────────────────────────
+# Any connection field value starting with "vault://" is resolved at startup.
+# Format: "vault://secret/data/myapp#field_name"
+# Example config.json:
+#   "password": "vault://secret/data/prod-sql#password"
+#
+# Vault config in config.json (optional):
+#   "vault": {
+#     "url": "https://vault.mycompany.com",
+#     "method": "token",          # token | approle | aws | azure
+#     "token": "hvs.xxx",         # for method=token (or set VAULT_TOKEN env var)
+#     "role_id": "...",            # for method=approle
+#     "secret_id": "...",          # for method=approle
+#   }
+
+def _resolve_vault_secrets(config: dict) -> dict:
+    vault_cfg = config.get("vault")
+    if not vault_cfg:
+        # Still check env var — vault might be configured via environment
+        vault_url = os.environ.get("VAULT_ADDR")
+        if not vault_url:
+            return config
+        vault_cfg = {"url": vault_url, "method": "token"}
+
+    # Check if any connection has a vault:// reference
+    has_vault_refs = any(
+        isinstance(v, str) and v.startswith("vault://")
+        for conn in config.get("connections", [])
+        for v in conn.values()
+    )
+    if not has_vault_refs:
+        return config
+
+    try:
+        import hvac
+    except ImportError:
+        raise ImportError("hvac is required for Vault integration: pip install hvac")
+
+    url    = vault_cfg.get("url", os.environ.get("VAULT_ADDR", "http://localhost:8200"))
+    method = vault_cfg.get("method", "token")
+    client = hvac.Client(url=url)
+
+    if method == "token":
+        token = vault_cfg.get("token", os.environ.get("VAULT_TOKEN", ""))
+        client.token = token
+
+    elif method == "approle":
+        role_id   = vault_cfg.get("role_id",   os.environ.get("VAULT_ROLE_ID", ""))
+        secret_id = vault_cfg.get("secret_id", os.environ.get("VAULT_SECRET_ID", ""))
+        client.auth.approle.login(role_id=role_id, secret_id=secret_id)
+
+    elif method == "aws":
+        client.auth.aws.iam_login(
+            access_key=os.environ.get("AWS_ACCESS_KEY_ID"),
+            secret_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+            role=vault_cfg.get("role", "")
+        )
+
+    elif method == "azure":
+        client.auth.azure.login(
+            role=vault_cfg.get("role", ""),
+            jwt=vault_cfg.get("jwt", os.environ.get("VAULT_AZURE_JWT", ""))
+        )
+
+    if not client.is_authenticated():
+        raise ValueError("Vault authentication failed — check your vault config")
+
+    # Resolve all vault:// references in connection configs
+    for conn in config.get("connections", []):
+        for key, value in list(conn.items()):
+            if not isinstance(value, str) or not value.startswith("vault://"):
+                continue
+            # vault://secret/data/myapp#fieldname
+            ref   = value[len("vault://"):]
+            path, field = ref.rsplit("#", 1) if "#" in ref else (ref, key)
+            secret = client.secrets.kv.v2.read_secret_version(path=path)
+            conn[key] = secret["data"]["data"][field]
+            print(f"  [vault] resolved {key} from {path}#{field}")
+
+    return config
 
 def build_tools(config):
     tools = []

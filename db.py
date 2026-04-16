@@ -1,8 +1,9 @@
 """
 db.py — universal database connector
-Supports: SQLite, SQL Server (Azure/local), PostgreSQL, MySQL, AWS RDS, CosmosDB, AWS Bedrock KB
+Supports: SQLite, SQL Server (Azure/local), PostgreSQL, MySQL, AWS RDS, CosmosDB, AWS Bedrock KB,
+          SSH (Linux/Mac remote servers), PowerShell/WinRM (Windows remote servers)
 """
-import sqlite3, json, os
+import sqlite3, json, os, re
 from typing import Any
 
 
@@ -20,6 +21,10 @@ def get_driver(conn_cfg: dict):
         return CosmosDriver(conn_cfg)
     elif t in ("bedrock-kb", "aws-bedrock"):
         return BedrockKBDriver(conn_cfg)
+    elif t == "ssh":
+        return SSHDriver(conn_cfg)
+    elif t in ("powershell", "winrm"):
+        return PowerShellDriver(conn_cfg)
     else:
         raise ValueError(f"Unsupported db type: {t}")
 
@@ -354,4 +359,178 @@ class BedrockKBDriver:
             lines.append(f"Knowledge Base: {kb_id}")
             for c in cols:
                 lines.append(f"  - {c['name']}: {c['type']}")
+        return "\n".join(lines)
+
+
+# ── SSH (Linux / Mac remote servers) ──────────────────────────────────────────
+# Role enforcement for shell commands:
+#   read-only  → only allows safe read commands (ls, cat, df, ps, top, etc.)
+#   read-write → allows file writes, service restarts
+#   admin      → unrestricted
+
+_SSH_READONLY_ALLOWED = re.compile(
+    r"^\s*(ls|cat|echo|pwd|whoami|hostname|uname|df|du|free|ps|top|uptime|"
+    r"netstat|ss|ip|ping|curl|wget|find|grep|tail|head|wc|env|printenv|"
+    r"systemctl\s+status|journalctl|date|id|groups|last|who)\b",
+    re.IGNORECASE
+)
+
+class SSHDriver:
+    def __init__(self, cfg: dict):
+        import paramiko
+        self.paramiko  = paramiko
+        self.host      = cfg.get("server", "")
+        self.port      = int(cfg.get("port", 22))
+        self.username  = cfg.get("username", "")
+        self.password  = cfg.get("password", "")
+        self.key_path  = cfg.get("private_key_path", "")
+        self.role      = cfg.get("role", "read-only")
+        self.tables    = cfg.get("tables", ["*"])   # "tables" = allowed commands list
+
+    def _client(self):
+        c = self.paramiko.SSHClient()
+        c.set_missing_host_key_policy(self.paramiko.AutoAddPolicy())
+        if self.key_path:
+            c.connect(self.host, port=self.port, username=self.username,
+                      key_filename=self.key_path)
+        else:
+            c.connect(self.host, port=self.port, username=self.username,
+                      password=self.password)
+        return c
+
+    def _check_role(self, command: str):
+        if self.role == "admin":
+            return
+        if self.role == "read-only" and not _SSH_READONLY_ALLOWED.match(command):
+            raise ValueError(
+                f"Role 'read-only' only allows safe read commands. "
+                f"Blocked: '{command.split()[0]}'"
+            )
+
+    def query(self, command: str) -> list[dict]:
+        self._check_role(command)
+        c = self._client()
+        _, stdout, stderr = c.exec_command(command)
+        out  = stdout.read().decode("utf-8", errors="replace")
+        err  = stderr.read().decode("utf-8", errors="replace")
+        c.close()
+        lines = out.strip().splitlines()
+        return [{"line": i+1, "output": l, "error": err if i == 0 and err else ""}
+                for i, l in enumerate(lines)] if lines else [{"output": "", "error": err}]
+
+    def execute(self, command: str) -> int:
+        if self.role == "read-only":
+            raise ValueError("Role 'read-only' does not allow write commands over SSH.")
+        c = self._client()
+        _, stdout, _ = c.exec_command(command)
+        exit_code = stdout.channel.recv_exit_status()
+        c.close()
+        return exit_code
+
+    def list_tables(self) -> list[str]:
+        # "tables" for SSH = allowed command categories shown in schema
+        defaults = ["system-info", "disk", "memory", "processes", "network", "logs"]
+        if self.tables == ["*"]:
+            return defaults
+        return [t for t in defaults if t in self.tables]
+
+    def table_columns(self, category: str) -> list[dict]:
+        commands = {
+            "system-info": [{"name": "command", "type": "uname -a / hostname / uptime"}],
+            "disk":        [{"name": "command", "type": "df -h / du -sh"}],
+            "memory":      [{"name": "command", "type": "free -h"}],
+            "processes":   [{"name": "command", "type": "ps aux / top -bn1"}],
+            "network":     [{"name": "command", "type": "netstat -tulpn / ip addr"}],
+            "logs":        [{"name": "command", "type": "journalctl -n 50 / tail /var/log/syslog"}],
+        }
+        return commands.get(category, [{"name": "command", "type": "string"}])
+
+    def schema(self) -> str:
+        lines = [f"SSH Server: {self.host}", f"  Role: {self.role}"]
+        for cat in self.list_tables():
+            cols = self.table_columns(cat)
+            lines.append(f"  Category: {cat}")
+            for c in cols:
+                lines.append(f"    - {c['name']}: {c['type']}")
+        return "\n".join(lines)
+
+
+# ── PowerShell / WinRM (Windows remote servers) ───────────────────────────────
+_PS_READONLY_ALLOWED = re.compile(
+    r"^\s*Get-|^\s*Show-|^\s*Test-|^\s*Measure-|^\s*Select-|^\s*Where-|"
+    r"^\s*Format-|^\s*Out-|^\s*Write-Host|^\s*Write-Output|^\s*\$PSVersionTable|"
+    r"^\s*ipconfig|^\s*hostname|^\s*whoami|^\s*systeminfo|^\s*tasklist|"
+    r"^\s*netstat|^\s*ping",
+    re.IGNORECASE
+)
+
+class PowerShellDriver:
+    def __init__(self, cfg: dict):
+        import winrm
+        self.winrm    = winrm
+        self.host     = cfg.get("server", "")
+        self.port     = int(cfg.get("port", 5985))
+        self.username = cfg.get("username", "")
+        self.password = cfg.get("password", "")
+        self.role     = cfg.get("role", "read-only")
+        self.tables   = cfg.get("tables", ["*"])
+        self.transport = cfg.get("transport", "ntlm")   # ntlm | kerberos | credssp
+
+    def _session(self):
+        return self.winrm.Session(
+            f"http://{self.host}:{self.port}/wsman",
+            auth=(self.username, self.password),
+            transport=self.transport
+        )
+
+    def _check_role(self, command: str):
+        if self.role == "admin":
+            return
+        if self.role == "read-only" and not _PS_READONLY_ALLOWED.match(command):
+            raise ValueError(
+                f"Role 'read-only' only allows Get-* and read cmdlets. "
+                f"Blocked: '{command.split()[0]}'"
+            )
+
+    def query(self, command: str) -> list[dict]:
+        self._check_role(command)
+        s   = self._session()
+        r   = s.run_ps(command)
+        out = r.std_out.decode("utf-8", errors="replace").strip()
+        err = r.std_err.decode("utf-8", errors="replace").strip()
+        lines = out.splitlines()
+        return [{"line": i+1, "output": l, "error": err if i == 0 and err else ""}
+                for i, l in enumerate(lines)] if lines else [{"output": "", "error": err}]
+
+    def execute(self, command: str) -> int:
+        if self.role == "read-only":
+            raise ValueError("Role 'read-only' does not allow write commands over WinRM.")
+        s = self._session()
+        r = s.run_ps(command)
+        return r.status_code
+
+    def list_tables(self) -> list[str]:
+        defaults = ["system-info", "services", "processes", "disk", "network", "events"]
+        if self.tables == ["*"]:
+            return defaults
+        return [t for t in defaults if t in self.tables]
+
+    def table_columns(self, category: str) -> list[dict]:
+        commands = {
+            "system-info": [{"name": "command", "type": "Get-ComputerInfo / $PSVersionTable"}],
+            "services":    [{"name": "command", "type": "Get-Service | Select Name,Status"}],
+            "processes":   [{"name": "command", "type": "Get-Process | Select Name,CPU,WorkingSet"}],
+            "disk":        [{"name": "command", "type": "Get-PSDrive | Select Name,Used,Free"}],
+            "network":     [{"name": "command", "type": "Get-NetIPAddress / netstat -an"}],
+            "events":      [{"name": "command", "type": "Get-EventLog -Newest 20 -LogName System"}],
+        }
+        return commands.get(category, [{"name": "command", "type": "string"}])
+
+    def schema(self) -> str:
+        lines = [f"PowerShell/WinRM Server: {self.host}", f"  Role: {self.role}"]
+        for cat in self.list_tables():
+            cols = self.table_columns(cat)
+            lines.append(f"  Category: {cat}")
+            for c in cols:
+                lines.append(f"    - {c['name']}: {c['type']}")
         return "\n".join(lines)

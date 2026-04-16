@@ -17,3 +17,12 @@ azure-cosmos==4.9.0
 
 # AWS Bedrock / RDS
 boto3==1.38.0
+
+# SSH (Linux/Mac remote servers)
+paramiko==3.5.0
+
+# PowerShell / WinRM (Windows remote servers)
+pywinrm==0.5.0
+
+# HashiCorp Vault
+hvac==2.3.0
