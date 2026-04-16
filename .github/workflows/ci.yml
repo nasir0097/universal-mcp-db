@@ -18,20 +18,17 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install ODBC driver (for pyodbc / SQL Server tests)
-        run: |
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-            | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
-          curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
-            -o /etc/apt/sources.list.d/mssql-release.list
-          sudo apt-get update -qq
-          sudo ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18 unixodbc-dev
-
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov bandit httpx
+          # Strip pyodbc — needs ODBC driver not available in CI, tests use SQLite only
+          python -c "
+          lines = open('requirements.txt').readlines()
+          open('requirements-ci.txt','w').writelines(
+              l for l in lines if not l.startswith('pyodbc') and not l.startswith('pywinrm')
+          )"
+          pip install -r requirements-ci.txt
+          pip install pytest pytest-cov bandit
 
       - name: Copy example config
         run: cp config.example.json config.json
