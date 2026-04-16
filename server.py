@@ -14,6 +14,157 @@ import json, sys, os, argparse, re
 from db import get_driver
 from roles import check
 
+# ── Auth middleware ────────────────────────────────────────────────────────────
+# Supports three modes set via config.json "auth" block:
+#
+#  API key (simplest — good for internal tools, Claude Desktop):
+#    "auth": { "type": "api-key", "keys": ["key1", "key2"] }
+#    Client sends:  Authorization: Bearer key1
+#
+#  Entra ID / Azure AD (enterprise Azure):
+#    "auth": { "type": "entra", "tenant_id": "...", "client_id": "..." }
+#    Client sends:  Authorization: Bearer <Azure AD JWT>
+#    Server validates signature + audience against Microsoft JWKS
+#
+#  AWS IAM (enterprise AWS):
+#    "auth": { "type": "aws-iam", "region": "us-east-1", "role_arn": "..." }
+#    Client sends:  Authorization: Bearer <STS token>
+#    Server calls STS GetCallerIdentity to verify
+#
+#  None (default — no auth, local use only):
+#    omit "auth" block entirely
+
+def _validate_token(token: str | None, config: dict) -> dict:
+    """
+    Validate the incoming Bearer token.
+    Returns a dict with caller info: {"user": "...", "role": "..."}
+    Raises ValueError on auth failure.
+    """
+    auth_cfg = config.get("auth", {})
+    if not auth_cfg or auth_cfg.get("type", "none") == "none":
+        return {"user": "anonymous", "role": "admin"}   # no auth = local mode
+
+    if not token:
+        raise ValueError("Authorization required — provide a Bearer token")
+
+    auth_type = auth_cfg.get("type")
+
+    # ── API key ────────────────────────────────────────────────────────────────
+    if auth_type == "api-key":
+        allowed = auth_cfg.get("keys", [])
+        if token not in allowed:
+            raise ValueError("Invalid API key")
+        return {"user": "api-key-client", "role": auth_cfg.get("role", "read-only")}
+
+    # ── Entra ID / Azure AD ────────────────────────────────────────────────────
+    if auth_type == "entra":
+        return _validate_entra_token(token, auth_cfg)
+
+    # ── AWS IAM / STS ──────────────────────────────────────────────────────────
+    if auth_type == "aws-iam":
+        return _validate_aws_token(token, auth_cfg)
+
+    raise ValueError(f"Unknown auth type: {auth_type}")
+
+
+def _validate_entra_token(token: str, cfg: dict) -> dict:
+    """
+    Validate an Azure AD / Entra ID JWT.
+    Uses python-jose + Microsoft's public JWKS endpoint.
+    No MSAL dependency needed — works for any OAuth2 client that gets a token
+    from Azure AD (service principals, managed identities, user logins).
+    """
+    try:
+        from jose import jwt, jwk
+        from jose.exceptions import JWTError
+        import urllib.request
+    except ImportError:
+        raise ImportError("python-jose required: pip install python-jose[cryptography]")
+
+    tenant_id = cfg.get("tenant_id", "common")
+    client_id = cfg.get("client_id", "")
+
+    # Fetch Microsoft's public signing keys
+    jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
+    try:
+        with urllib.request.urlopen(jwks_url, timeout=5) as r:
+            jwks = json.loads(r.read())
+    except Exception as e:
+        raise ValueError(f"Could not fetch Entra ID signing keys: {e}")
+
+    try:
+        claims = jwt.decode(
+            token,
+            jwks,
+            algorithms=["RS256"],
+            audience=client_id or None,
+            options={"verify_aud": bool(client_id)}
+        )
+    except JWTError as e:
+        raise ValueError(f"Entra ID token invalid: {e}")
+
+    # Map Azure AD groups → roles
+    group_role_map = cfg.get("group_roles", {})
+    user_groups    = claims.get("groups", [])
+    role = "read-only"   # default
+    for group_id, mapped_role in group_role_map.items():
+        if group_id in user_groups:
+            role = mapped_role
+            break
+
+    return {
+        "user":  claims.get("preferred_username") or claims.get("upn") or claims.get("sub"),
+        "role":  role,
+        "email": claims.get("email", ""),
+        "name":  claims.get("name", ""),
+    }
+
+
+def _validate_aws_token(token: str, cfg: dict) -> dict:
+    """
+    Validate an AWS STS token by calling GetCallerIdentity.
+    The client generates a pre-signed GetCallerIdentity URL and sends it as the token.
+    Server calls STS to verify — no secret sharing needed.
+    """
+    try:
+        import boto3, botocore
+    except ImportError:
+        raise ImportError("boto3 required: pip install boto3")
+
+    region     = cfg.get("region", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    role_arn   = cfg.get("role_arn", "")   # optional: restrict to specific role
+
+    try:
+        import urllib.request, urllib.parse
+        # token is a pre-signed STS GetCallerIdentity URL
+        with urllib.request.urlopen(token, timeout=5) as r:
+            import xml.etree.ElementTree as ET
+            root    = ET.fromstring(r.read())
+            ns      = {"sts": "https://sts.amazonaws.com/doc/2011-06-15/"}
+            user_id = root.find(".//sts:UserId",  ns)
+            arn     = root.find(".//sts:Arn",     ns)
+            account = root.find(".//sts:Account", ns)
+    except Exception as e:
+        raise ValueError(f"AWS STS validation failed: {e}")
+
+    arn_str = arn.text if arn is not None else ""
+    if role_arn and role_arn not in arn_str:
+        raise ValueError(f"AWS identity '{arn_str}' is not allowed (expected role: {role_arn})")
+
+    # Map ARN patterns → roles
+    arn_role_map = cfg.get("arn_roles", {})   # {"arn:aws:iam::123:role/admin": "admin"}
+    role = "read-only"
+    for pattern, mapped_role in arn_role_map.items():
+        if pattern in arn_str:
+            role = mapped_role
+            break
+
+    return {
+        "user":    arn_str,
+        "role":    role,
+        "account": account.text if account is not None else "",
+    }
+
 # ── Input sanitisation ─────────────────────────────────────────────────────────
 _DANGEROUS = re.compile(
     r"\b(drop|truncate|alter|create|exec|execute|xp_|sp_|insert|update|delete|merge|grant|revoke)\b",
@@ -269,9 +420,20 @@ def run_http(config):
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     tools = build_tools(config)
 
+    def _auth(request: Request):
+        """Extract and validate Bearer token from request. Returns caller info dict."""
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip() or None
+        try:
+            return _validate_token(token, config)
+        except ValueError as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail=str(e))
+
     # ── MCP endpoint ──────────────────────────────────────────────────────────
     @app.post("/mcp")
     async def mcp_endpoint(request: Request):
+        caller = _auth(request)
         req    = await request.json()
         method = req.get("method")
         rid    = req.get("id")
@@ -298,6 +460,7 @@ def run_http(config):
     # ── REST API ──────────────────────────────────────────────────────────────
     @app.get("/api/{conn_id}/{table}")
     async def rest_get(
+        request: Request,
         conn_id: str,
         table:   str,
         limit:   int   = Query(100, le=1000),
@@ -305,6 +468,7 @@ def run_http(config):
         order:   str   = Query(None),
         filter:  str   = Query(None, description="SQL WHERE clause e.g. id=1")
     ):
+        _auth(request)
         conn_cfg = _get_conn(conn_id, config)
         driver   = get_driver(conn_cfg)
         _assert_table_allowed(table, driver)
