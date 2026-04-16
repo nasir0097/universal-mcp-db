@@ -29,3 +29,12 @@ Thumbs.db
 
 # Docker
 *.env
+
+# TLS certificates — generated locally, never commit private keys
+cert.pem
+key.pem
+*.crt
+*.key
+
+# Runtime auth database — contains user/session data
+auth.db

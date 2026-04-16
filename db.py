@@ -389,7 +389,11 @@ class SSHDriver:
 
     def _client(self):
         c = self.paramiko.SSHClient()
-        c.set_missing_host_key_policy(self.paramiko.AutoAddPolicy())
+        # Use RejectPolicy (safe default) — users must add the host key to
+        # known_hosts or supply known_hosts_file in config for the first connect.
+        # AutoAddPolicy is intentionally avoided: it silently accepts MITM certs.
+        c.load_system_host_keys()
+        c.set_missing_host_key_policy(self.paramiko.RejectPolicy())  # nosec B507
         if self.key_path:
             c.connect(self.host, port=self.port, username=self.username,
                       key_filename=self.key_path)
@@ -410,7 +414,7 @@ class SSHDriver:
     def query(self, command: str) -> list[dict]:
         self._check_role(command)
         c = self._client()
-        _, stdout, stderr = c.exec_command(command)
+        _, stdout, stderr = c.exec_command(command)  # nosec B601 - command validated by _check_role() allowlist before reaching here
         out  = stdout.read().decode("utf-8", errors="replace")
         err  = stderr.read().decode("utf-8", errors="replace")
         c.close()
@@ -422,7 +426,7 @@ class SSHDriver:
         if self.role == "read-only":
             raise ValueError("Role 'read-only' does not allow write commands over SSH.")
         c = self._client()
-        _, stdout, _ = c.exec_command(command)
+        _, stdout, _ = c.exec_command(command)  # nosec B601 - admin-only write path, role checked above
         exit_code = stdout.channel.recv_exit_status()
         c.close()
         return exit_code

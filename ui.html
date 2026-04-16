@@ -98,10 +98,100 @@
   .badge-bedrock{background:#1a2e2e;color:#34d399}
   .badge-ssh{background:#2e1a1a;color:#fb923c}
   .badge-ps{background:#1a2a1a;color:#86efac}
+
+  /* ── Login screen ── */
+  #loginScreen{display:none;position:fixed;inset:0;background:#0f1117;z-index:999;align-items:center;justify-content:center;flex-direction:column;gap:0}
+  #loginScreen.show{display:flex}
+  .login-card{background:#1a1d27;border:1px solid #2d3748;border-radius:16px;padding:40px 44px;width:380px;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+  .login-logo{font-size:13px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+  .login-sub{font-size:12px;color:#4a5568;margin-bottom:32px}
+  .login-card h2{font-size:22px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+  .login-field{margin-bottom:16px}
+  .login-field label{display:block;font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  .login-field input{width:100%;padding:11px 14px;background:#0f1117;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;font-size:14px;outline:none;transition:border-color .15s}
+  .login-field input:focus{border-color:#6d28d9;box-shadow:0 0 0 3px rgba(109,40,217,.15)}
+  .login-btn{width:100%;padding:12px;border-radius:8px;background:#6d28d9;border:none;color:white;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;transition:background .15s;letter-spacing:.3px}
+  .login-btn:hover{background:#7c3aed}
+  .login-btn:disabled{background:#3d2a6e;color:#64748b;cursor:not-allowed}
+  .login-error{margin-top:12px;padding:10px 14px;border-radius:8px;background:#3b0a0a;color:#f87171;font-size:13px;display:none}
+  .login-error.show{display:block}
+  .login-vault-badge{margin-top:24px;padding:8px 12px;border-radius:8px;background:#0f1117;border:1px solid #2d3748;font-size:11px;color:#4a5568;text-align:center}
+  .login-vault-badge span{color:#a78bfa;font-weight:600}
+
+  /* ── User chip in topbar ── */
+  .user-chip{display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:8px;background:#1e1b4b;border:1px solid #3d2a8a;font-size:12px;cursor:pointer;transition:background .15s}
+  .user-chip:hover{background:#2d1f6e}
+  .user-avatar{width:22px;height:22px;border-radius:50%;background:#6d28d9;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0}
+  .user-name{color:#a78bfa;font-weight:600}
+  .user-role{color:#4a5568;font-size:10px}
+
+  /* ── Admin panel ── */
+  .admin-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-start;justify-content:flex-end}
+  .admin-overlay.open{display:flex}
+  .admin-panel{background:#1a1d27;border-left:1px solid #2d3748;width:780px;max-width:95vw;height:100vh;display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.5)}
+  .admin-header{padding:20px 24px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:12px}
+  .admin-header h2{font-size:15px;font-weight:700;color:#a78bfa;flex:1}
+  .admin-close{width:28px;height:28px;border-radius:6px;background:transparent;border:1px solid #2d3748;color:#64748b;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+  .admin-close:hover{background:#2d3748;color:#e2e8f0}
+  .admin-tabs{display:flex;gap:2px;padding:12px 24px;border-bottom:1px solid #2d3748;background:#13151f}
+  .admin-tab{padding:6px 16px;border-radius:6px;font-size:13px;cursor:pointer;color:#64748b;transition:all .15s}
+  .admin-tab.active{background:#1e1b4b;color:#a78bfa}
+  .admin-tab:hover:not(.active){color:#e2e8f0}
+  .admin-body{flex:1;overflow-y:auto;padding:24px}
+  .admin-section-title{font-size:13px;font-weight:700;color:#94a3b8;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .perm-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}
+  .perm-table th{padding:9px 14px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #2d3748;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .perm-table td{padding:9px 14px;border-bottom:1px solid #1e2433;color:#e2e8f0}
+  .perm-table tr:hover td{background:#1e2433}
+  .role-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;text-transform:uppercase}
+  .rb-admin{background:#3b1a1a;color:#f87171}
+  .rb-read-write{background:#1a3a2a;color:#4ade80}
+  .rb-read-only{background:#1e3a5f;color:#60a5fa}
+  .rb-viewer{background:#2d2a1a;color:#fbbf24}
+  .add-row{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .add-row input,.add-row select{padding:8px 12px;background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;min-width:160px}
+  .add-row input:focus,.add-row select:focus{border-color:#6d28d9}
+  .audit-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .audit-filters input,.audit-filters select{padding:7px 11px;background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:12px;outline:none}
+  .audit-filters input:focus,.audit-filters select:focus{border-color:#6d28d9}
+  .audit-sql{font-family:monospace;font-size:12px;color:#94a3b8;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .status-ok{color:#4ade80}
+  .status-error{color:#f87171}
+  .perm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:20px}
+  .perm-card{background:#13151f;border:1px solid #2d3748;border-radius:8px;padding:14px}
+  .perm-card-user{font-size:13px;font-weight:700;color:#e2e8f0;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .perm-conn-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e2433;font-size:12px}
+  .perm-conn-row:last-child{border-bottom:none}
+  .revoke-btn{padding:2px 8px;border-radius:4px;background:#3b0a0a;border:1px solid #7f1d1d;color:#f87171;font-size:10px;cursor:pointer}
+  .revoke-btn:hover{background:#7f1d1d}
 </style>
 </head>
 <body>
-<div class="layout">
+
+<!-- ── Login Screen ── -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">MCP DB Manager</div>
+    <div class="login-sub">Universal Database MCP Server</div>
+    <h2>Sign in</h2>
+    <div style="height:20px"></div>
+    <div class="login-field">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="admin" autocomplete="username"
+             onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign in</button>
+    <div class="login-vault-badge">Credentials stored in <span>HashiCorp Vault</span></div>
+  </div>
+</div>
+
+<div class="layout" id="appLayout" style="display:none">
   <div class="sidebar">
     <div class="sidebar-header">
       <h1>MCP DB Manager</h1>
@@ -115,7 +205,18 @@
     <div class="topbar">
       <div class="status-dot"></div>
       <h2 id="topbarTitle">Select a connection</h2>
-      <span class="mcp-url" id="mcpUrl" onclick="copyMcpUrl()" title="Click to copy">http://localhost:7654/mcp</span>
+      <span class="mcp-url" id="mcpUrl" onclick="copyMcpUrl()" title="Click to copy">https://localhost:7654/mcp</span>
+      <div id="adminBtn" style="display:none" onclick="openAdmin()"
+           title="Admin panel" style="cursor:pointer;padding:5px 12px;border-radius:8px;background:#13151f;border:1px solid #2d3748;font-size:12px;color:#64748b">
+        ⚙ Admin
+      </div>
+      <div class="user-chip" onclick="doLogout()" title="Click to sign out">
+        <div class="user-avatar" id="userAvatar">A</div>
+        <div>
+          <div class="user-name" id="userName">admin</div>
+          <div class="user-role" id="userRole">admin · click to sign out</div>
+        </div>
+      </div>
     </div>
     <div class="tabs">
       <div class="tab active" onclick="switchTab('query')">Query</div>
@@ -128,7 +229,7 @@
       </div>
     </div>
   </div>
-</div>
+</div><!-- /.layout -->
 
 <!-- Add Connection Modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
@@ -327,20 +428,132 @@
   </div>
 </div>
 
+<!-- ── Admin Panel ── -->
+<div class="admin-overlay" id="adminOverlay" onclick="if(event.target===this)closeAdmin()">
+  <div class="admin-panel">
+    <div class="admin-header">
+      <h2>⚙ Admin Panel</h2>
+      <button class="admin-close" onclick="closeAdmin()">✕</button>
+    </div>
+    <div class="admin-tabs">
+      <div class="admin-tab active" onclick="switchAdminTab('users')">Users</div>
+      <div class="admin-tab" onclick="switchAdminTab('permissions')">Permissions</div>
+      <div class="admin-tab" onclick="switchAdminTab('audit')">Audit Log</div>
+    </div>
+    <div class="admin-body" id="adminBody"></div>
+  </div>
+</div>
+
 <script>
-const API = 'http://localhost:7654';
+// Use relative URLs — works on any host/port and with HTTPS automatically
+const API = '';
 let connections = [];
 let activeConn  = null;
 let activeTab   = 'query';
 let lastRows    = [];
 
-async function init() {
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+function getToken()         { return localStorage.getItem('mcp_token') || ''; }
+function setToken(t)        { localStorage.setItem('mcp_token', t); }
+function clearToken()       { localStorage.removeItem('mcp_token'); }
+
+function authHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }
+           : { 'Content-Type': 'application/json' };
+}
+
+async function apiFetch(path, opts = {}) {
+  opts.headers = { ...authHeaders(), ...(opts.headers || {}) };
+  const r = await fetch(API + path, opts);
+  if (r.status === 401) { showLogin(); return null; }
+  return r;
+}
+
+// ── Login / Logout ────────────────────────────────────────────────────────────
+function showLogin() {
+  document.getElementById('loginScreen').classList.add('show');
+  document.getElementById('appLayout').style.display = 'none';
+  document.getElementById('loginUser').focus();
+}
+
+function showApp(username, role) {
+  document.getElementById('loginScreen').classList.remove('show');
+  document.getElementById('appLayout').style.display = 'grid';
+  document.getElementById('userName').textContent   = username;
+  document.getElementById('userRole').textContent   = role + ' · click to sign out';
+  document.getElementById('userAvatar').textContent = username[0].toUpperCase();
+  // show admin button only for admin role
+  document.getElementById('adminBtn').style.display = role === 'admin' ? '' : 'none';
+}
+
+async function doLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const err  = document.getElementById('loginError');
+  const btn  = document.getElementById('loginBtn');
+  if (!user || !pass) { err.textContent = 'Enter username and password'; err.classList.add('show'); return; }
+
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  err.classList.remove('show');
+
   try {
-    const res  = await fetch(`${API}/health`);
+    const res  = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setToken(data.token);
+      showApp(user, data.role);
+      await loadConnections();
+    } else {
+      err.textContent = data.error || 'Login failed';
+      err.classList.add('show');
+      document.getElementById('loginPass').value = '';
+    }
+  } catch {
+    err.textContent = 'Cannot reach server';
+    err.classList.add('show');
+  }
+  btn.disabled = false; btn.textContent = 'Sign in';
+}
+
+async function doLogout() {
+  if (!confirm('Sign out?')) return;
+  await apiFetch('/auth/logout', { method: 'POST' });
+  clearToken();
+  showLogin();
+  showToast('Signed out');
+}
+
+async function loadConnections() {
+  try {
+    const res  = await apiFetch('/health');
+    if (!res) return;
     const data = await res.json();
     connections = data.connections;
     renderSidebar();
-  } catch { showToast('Cannot reach server at ' + API, false); }
+  } catch { showToast('Cannot reach server', false); }
+}
+
+async function init() {
+  const token = getToken();
+  if (token) {
+    // Validate existing session
+    try {
+      const res  = await fetch(`${API}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.authenticated) {
+        showApp('admin', data.role);
+        await loadConnections();
+        return;
+      }
+    } catch {}
+    clearToken();
+  }
+  showLogin();
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -386,8 +599,8 @@ function selectConn(id) {
 
 async function deleteConn(id) {
   if (!confirm(`Remove connection "${id}"?`)) return;
-  const res = await fetch(`${API}/connections/${id}`, { method: 'DELETE' });
-  if (res.ok) {
+  const res = await apiFetch(`/connections/${id}`, { method: 'DELETE' });
+  if (res && res.ok) {
     connections = connections.filter(c => c.id !== id);
     if (activeConn?.id === id) {
       activeConn = null;
@@ -437,9 +650,10 @@ async function runQuery() {
   document.getElementById('csvBtn').style.display = 'none';
 
   const t0  = Date.now();
-  const res  = await fetch(`${API}/mcp`, { method:'POST', headers:{'Content-Type':'application/json'},
+  const res  = await apiFetch(`/mcp`, { method:'POST',
     body: JSON.stringify({ jsonrpc:'2.0', id:Date.now(), method:'tools/call',
       params:{ name:`${activeConn.id}__query`, arguments:{ sql } } }) });
+  if (!res) return;
   const data = await res.json();
   const ms   = Date.now() - t0;
 
@@ -491,9 +705,10 @@ function exportCSV() {
 // ── Schema ────────────────────────────────────────────────────────────────────
 async function loadSchema() {
   document.getElementById('mainContent').innerHTML = `<div class="no-results"><span class="spinner"></span> Loading schema...</div>`;
-  const res  = await fetch(`${API}/mcp`, { method:'POST', headers:{'Content-Type':'application/json'},
+  const res  = await apiFetch(`/mcp`, { method:'POST',
     body: JSON.stringify({ jsonrpc:'2.0', id:Date.now(), method:'tools/call',
       params:{ name:`${activeConn.id}__schema`, arguments:{} } }) });
+  if (!res) return;
   const data = await res.json();
   const text = data.result?.content?.[0]?.text || '';
 
@@ -602,7 +817,8 @@ async function testConnection() {
   const conn   = buildConnObj();
   const tr     = document.getElementById('testResult');
   tr.className = 'test-result'; tr.textContent = 'Testing...';
-  const res  = await fetch(`${API}/connections/test`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(conn) });
+  const res  = await apiFetch(`/connections/test`, { method:'POST', body: JSON.stringify(conn) });
+  if (!res) return;
   const data = await res.json();
   if (data.ok) { tr.className = 'test-result test-ok'; tr.textContent = '✓ ' + data.message; }
   else         { tr.className = 'test-result test-fail'; tr.textContent = '✗ ' + data.error; }
@@ -611,7 +827,8 @@ async function testConnection() {
 async function saveConnection() {
   const conn = buildConnObj();
   if (!conn.id || !conn.name) { showToast('ID and Name are required', false); return; }
-  const res  = await fetch(`${API}/connections`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(conn) });
+  const res  = await apiFetch(`/connections`, { method:'POST', body: JSON.stringify(conn) });
+  if (!res) return;
   const data = await res.json();
   if (data.error) { showToast(data.error, false); return; }
   connections.push({ id:conn.id, name:conn.name, role:conn.role, type:conn.type });
@@ -622,8 +839,187 @@ async function saveConnection() {
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function copyMcpUrl() {
-  navigator.clipboard.writeText('http://localhost:7654/mcp');
+  navigator.clipboard.writeText(location.origin + '/mcp');
   showToast('MCP URL copied to clipboard');
+}
+
+// ── Admin Panel ───────────────────────────────────────────────────────────────
+let adminTab = 'users';
+
+function openAdmin()  {
+  document.getElementById('adminOverlay').classList.add('open');
+  switchAdminTab('users');
+}
+function closeAdmin() { document.getElementById('adminOverlay').classList.remove('open'); }
+
+function switchAdminTab(tab) {
+  adminTab = tab;
+  document.querySelectorAll('.admin-tab').forEach((t,i) =>
+    t.classList.toggle('active', ['users','permissions','audit'][i] === tab));
+  if (tab === 'users')       renderAdminUsers();
+  if (tab === 'permissions') renderAdminPerms();
+  if (tab === 'audit')       renderAdminAudit();
+}
+
+async function renderAdminUsers() {
+  const res  = await apiFetch('/admin/users');
+  if (!res) return;
+  const data = await res.json();
+  const conns = connections.map(c => c.id);
+
+  document.getElementById('adminBody').innerHTML = `
+    <div class="admin-section-title">Add User</div>
+    <div class="add-row">
+      <input id="au_user" placeholder="username">
+      <select id="au_role">
+        <option value="viewer">Viewer — explicit grants only</option>
+        <option value="admin">Admin — full access</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="adminAddUser()">Add User</button>
+    </div>
+    <div class="admin-section-title">Users <span style="color:#4a5568;font-weight:400">(${data.users.length})</span></div>
+    <table class="perm-table">
+      <thead><tr><th>Username</th><th>Global Role</th><th>Created</th><th>Connections</th><th></th></tr></thead>
+      <tbody>${data.users.map(u => `
+        <tr>
+          <td><b>${u.username}</b></td>
+          <td><span class="role-badge rb-${u.global_role}">${u.global_role}</span></td>
+          <td style="color:#64748b;font-size:12px">${u.created_at?.slice(0,16) || ''}</td>
+          <td style="color:#64748b;font-size:12px">${Object.keys(u.permissions).length} connection(s)</td>
+          <td><button class="btn btn-danger btn-sm" onclick="adminDelUser('${u.username}')">Remove</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function adminAddUser() {
+  const username    = document.getElementById('au_user').value.trim();
+  const global_role = document.getElementById('au_role').value;
+  if (!username) return;
+  const res = await apiFetch('/admin/users', {
+    method: 'POST', body: JSON.stringify({ username, global_role })
+  });
+  if (!res) return;
+  const data = await res.json();
+  if (data.error) { showToast(data.error, false); return; }
+  showToast(`User "${username}" added`);
+  renderAdminUsers();
+}
+
+async function adminDelUser(username) {
+  if (!confirm(`Remove user "${username}" and all their permissions?`)) return;
+  const res = await apiFetch(`/admin/users/${username}`, { method: 'DELETE' });
+  if (!res) return;
+  showToast(`User "${username}" removed`);
+  renderAdminUsers();
+}
+
+async function renderAdminPerms() {
+  const res  = await apiFetch('/admin/users');
+  if (!res) return;
+  const data = await res.json();
+  const conns = connections.map(c => ({ id: c.id, name: c.name }));
+
+  document.getElementById('adminBody').innerHTML = `
+    <div class="admin-section-title">Grant Permission</div>
+    <div class="add-row">
+      <select id="gp_user">${data.users.map(u=>`<option value="${u.username}">${u.username}</option>`).join('')}</select>
+      <select id="gp_conn">${conns.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      <select id="gp_role">
+        <option value="read-only">Read Only</option>
+        <option value="read-write">Read + Write</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="adminGrant()">Grant</button>
+    </div>
+    <div class="admin-section-title">Current Permissions</div>
+    <div class="perm-grid">${data.users.filter(u=>u.global_role!=='admin').map(u=>`
+      <div class="perm-card">
+        <div class="perm-card-user">
+          <div class="user-avatar" style="width:18px;height:18px;font-size:10px">${u.username[0].toUpperCase()}</div>
+          ${u.username}
+        </div>
+        ${Object.keys(u.permissions).length === 0
+          ? '<div style="color:#4a5568;font-size:12px">No connections granted</div>'
+          : Object.entries(u.permissions).map(([cid,role])=>`
+            <div class="perm-conn-row">
+              <span style="color:#94a3b8">${cid}</span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <span class="role-badge rb-${role}">${role}</span>
+                <button class="revoke-btn" onclick="adminRevoke('${u.username}','${cid}')">✕</button>
+              </span>
+            </div>`).join('')}
+      </div>`).join('')}
+    ${data.users.filter(u=>u.global_role==='admin').length ? `
+      <div class="perm-card" style="border-color:#6d28d9">
+        <div class="perm-card-user" style="color:#a78bfa">Admin users — full access</div>
+        ${data.users.filter(u=>u.global_role==='admin').map(u=>`
+          <div class="perm-conn-row"><span>${u.username}</span>
+            <span class="role-badge rb-admin">all</span>
+          </div>`).join('')}
+      </div>` : ''}
+    </div>`;
+}
+
+async function adminGrant() {
+  const username = document.getElementById('gp_user').value;
+  const conn_id  = document.getElementById('gp_conn').value;
+  const role     = document.getElementById('gp_role').value;
+  const res = await apiFetch('/admin/permissions', {
+    method: 'POST', body: JSON.stringify({ username, conn_id, role })
+  });
+  if (!res) return;
+  showToast(`Granted ${role} on ${conn_id} to ${username}`);
+  renderAdminPerms();
+}
+
+async function adminRevoke(username, conn_id) {
+  if (!confirm(`Revoke access to "${conn_id}" for "${username}"?`)) return;
+  const res = await apiFetch(`/admin/permissions/${username}/${conn_id}`, { method: 'DELETE' });
+  if (!res) return;
+  showToast(`Revoked access`);
+  renderAdminPerms();
+}
+
+async function renderAdminAudit(filterUser='', filterConn='', filterStatus='') {
+  const params = new URLSearchParams({ limit: 100 });
+  if (filterUser)   params.set('username', filterUser);
+  if (filterConn)   params.set('conn_id',  filterConn);
+  if (filterStatus) params.set('status',   filterStatus);
+
+  const res  = await apiFetch(`/admin/audit?${params}`);
+  if (!res) return;
+  const data = await res.json();
+
+  document.getElementById('adminBody').innerHTML = `
+    <div class="audit-filters">
+      <input id="af_user" placeholder="Filter by user" value="${filterUser}"
+             onchange="renderAdminAudit(this.value, document.getElementById('af_conn').value, document.getElementById('af_status').value)">
+      <input id="af_conn" placeholder="Filter by connection" value="${filterConn}"
+             onchange="renderAdminAudit(document.getElementById('af_user').value, this.value, document.getElementById('af_status').value)">
+      <select id="af_status" onchange="renderAdminAudit(document.getElementById('af_user').value, document.getElementById('af_conn').value, this.value)">
+        <option value="" ${!filterStatus?'selected':''}>All statuses</option>
+        <option value="ok" ${filterStatus==='ok'?'selected':''}>OK</option>
+        <option value="error" ${filterStatus==='error'?'selected':''}>Error</option>
+      </select>
+      <span style="font-size:12px;color:#4a5568;padding:7px 0">${data.total} total entries</span>
+    </div>
+    <table class="perm-table">
+      <thead><tr><th>#</th><th>Time</th><th>User</th><th>Connection</th><th>SQL</th><th>Rows</th><th>ms</th><th>Status</th></tr></thead>
+      <tbody>${data.rows.map(r=>`
+        <tr>
+          <td style="color:#4a5568">${r.id}</td>
+          <td style="color:#64748b;font-size:12px">${r.ts?.slice(0,19)||''}</td>
+          <td>${r.username}</td>
+          <td><span class="db-type-badge badge-sqlite">${r.conn_id}</span></td>
+          <td class="audit-sql" title="${(r.sql||'').replace(/"/g,'&quot;')}">${r.sql||'—'}</td>
+          <td style="color:#64748b">${r.rows??'—'}</td>
+          <td style="color:#64748b">${r.duration_ms??'—'}</td>
+          <td><span class="${r.status==='ok'?'status-ok':'status-error'}">${r.status}</span>
+              ${r.error?`<div style="font-size:11px;color:#f87171;margin-top:2px">${r.error}</div>`:''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 function showToast(msg, ok=true) {

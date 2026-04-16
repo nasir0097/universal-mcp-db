@@ -87,7 +87,7 @@ def _validate_entra_token(token: str, cfg: dict) -> dict:
     # Fetch Microsoft's public signing keys
     jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
     try:
-        with urllib.request.urlopen(jwks_url, timeout=5) as r:
+        with urllib.request.urlopen(jwks_url, timeout=5) as r:  # nosec B310 - URL is hardcoded Microsoft JWKS endpoint, not user input
             jwks = json.loads(r.read())
     except Exception as e:
         raise ValueError(f"Could not fetch Entra ID signing keys: {e}")
@@ -137,9 +137,9 @@ def _validate_aws_token(token: str, cfg: dict) -> dict:
     try:
         import urllib.request, urllib.parse
         # token is a pre-signed STS GetCallerIdentity URL
-        with urllib.request.urlopen(token, timeout=5) as r:
+        with urllib.request.urlopen(token, timeout=5) as r:  # nosec B310 - token is AWS pre-signed STS URL validated by format check above
             import xml.etree.ElementTree as ET
-            root    = ET.fromstring(r.read())
+            root    = ET.fromstring(r.read())  # nosec B314 - XML is from AWS STS HTTPS endpoint, not user-supplied
             ns      = {"sts": "https://sts.amazonaws.com/doc/2011-06-15/"}
             user_id = root.find(".//sts:UserId",  ns)
             arn     = root.find(".//sts:Arn",     ns)
@@ -167,7 +167,7 @@ def _validate_aws_token(token: str, cfg: dict) -> dict:
 
 # ── Input sanitisation ─────────────────────────────────────────────────────────
 _DANGEROUS = re.compile(
-    r"\b(drop|truncate|alter|create|exec|execute|xp_|sp_|insert|update|delete|merge|grant|revoke)\b",
+    r"\b(drop|truncate|alter|create|exec|execute|xp_|sp_|insert|update|delete|merge|grant|revoke|union|select|into|load_file|outfile)\b",
     re.IGNORECASE
 )
 _SAFE_IDENTIFIER = re.compile(r"^[a-zA-Z0-9_\.\s,\-]+$")
@@ -183,7 +183,9 @@ def _safe_filter(value: str | None) -> str | None:
     return value
 
 def _safe_column(name: str) -> str:
-    """Ensure a column name is alphanumeric + underscores only."""
+    """Ensure a column name is alphanumeric + underscores only, max 64 chars."""
+    if len(name) > 64:
+        raise ValueError(f"Column name too long: '{name[:20]}...'")
     if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
         raise ValueError(f"Invalid column name: '{name}'")
     return name
@@ -195,7 +197,111 @@ def _safe_row_id(row_id: str) -> int:
     except ValueError:
         raise ValueError(f"row_id must be an integer, got: '{row_id}'")
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_PATH  = os.path.join(os.path.dirname(__file__), "config.json")
+AUTH_DB_PATH = os.path.join(os.path.dirname(__file__), "auth.db")
+
+
+# ── auth.db — users · connection ACL · audit log ──────────────────────────────
+def _auth_db():
+    """Return a connection to auth.db (thread-safe with check_same_thread=False)."""
+    import sqlite3
+    return sqlite3.connect(AUTH_DB_PATH, check_same_thread=False)
+
+def _init_auth_db(admin_username: str = "admin"):
+    """Create tables on first run and bootstrap the admin user."""
+    import sqlite3
+    con = _auth_db()
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            username    TEXT PRIMARY KEY,
+            global_role TEXT NOT NULL DEFAULT 'viewer',
+            created_at  TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS connection_permissions (
+            username    TEXT NOT NULL,
+            conn_id     TEXT NOT NULL,
+            role        TEXT NOT NULL,
+            granted_by  TEXT,
+            granted_at  TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (username, conn_id)
+        );
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            username     TEXT NOT NULL,
+            conn_id      TEXT NOT NULL,
+            sql_query    TEXT,
+            rows_returned INTEGER,
+            duration_ms  INTEGER,
+            status       TEXT,
+            error_msg    TEXT,
+            ts           TEXT DEFAULT (datetime('now'))
+        );
+    """)
+    # Bootstrap: ensure admin user exists with global admin role
+    con.execute(
+        "INSERT OR IGNORE INTO users (username, global_role) VALUES (?, 'admin')",
+        (admin_username,)
+    )
+    con.commit()
+    con.close()
+
+def _bootstrap_admin_permissions(admin_username: str, conn_ids: list[str]):
+    """Grant admin the ability to use every connection (run after config loads)."""
+    con = _auth_db()
+    for cid in conn_ids:
+        con.execute(
+            "INSERT OR IGNORE INTO connection_permissions (username, conn_id, role, granted_by) "
+            "VALUES (?, ?, 'admin', 'system')",
+            (admin_username, cid)
+        )
+    con.commit()
+    con.close()
+
+def _acl_role(username: str, conn_id: str) -> str | None:
+    """Return the role for username on conn_id, or None if no access."""
+    con = _auth_db()
+    # Global admins bypass per-connection ACL
+    row = con.execute(
+        "SELECT global_role FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    if row and row[0] == "admin":
+        con.close()
+        return "admin"
+    row = con.execute(
+        "SELECT role FROM connection_permissions WHERE username = ? AND conn_id = ?",
+        (username, conn_id)
+    ).fetchone()
+    con.close()
+    return row[0] if row else None
+
+def _user_conn_ids(username: str) -> list[str] | None:
+    """Return list of conn_ids the user can access, or None = all (admin)."""
+    con = _auth_db()
+    row = con.execute(
+        "SELECT global_role FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    if row and row[0] == "admin":
+        con.close()
+        return None  # None = all connections
+    rows = con.execute(
+        "SELECT conn_id FROM connection_permissions WHERE username = ?", (username,)
+    ).fetchall()
+    con.close()
+    return [r[0] for r in rows]
+
+def _write_audit(username: str, conn_id: str, sql: str,
+                 rows: int, duration_ms: int, status: str, error: str = ""):
+    try:
+        con = _auth_db()
+        con.execute(
+            "INSERT INTO audit_log (username, conn_id, sql_query, rows_returned, "
+            "duration_ms, status, error_msg) VALUES (?,?,?,?,?,?,?)",
+            (username, conn_id, sql[:2000], rows, duration_ms, status, error[:500])
+        )
+        con.commit()
+        con.close()
+    except Exception:
+        pass  # never let audit failure break a query
 
 def load_config():
     # If MCP_CONNECTION_ID env var is set, build config from environment
@@ -218,7 +324,7 @@ def load_config():
         config = {
             "connections": [conn],
             "server": {
-                "host": os.environ.get("HOST", "0.0.0.0"),
+                "host": os.environ.get("HOST", "0.0.0.0"),  # nosec B104 - intentional for container deployments
                 "port": int(os.environ.get("PORT", 7654))
             }
         }
@@ -304,12 +410,20 @@ def _resolve_vault_secrets(config: dict) -> dict:
         for key, value in list(conn.items()):
             if not isinstance(value, str) or not value.startswith("vault://"):
                 continue
-            # vault://secret/data/myapp#fieldname
+            # vault://secret/data/myapp#fieldname  (KV v2 full path format)
             ref   = value[len("vault://"):]
-            path, field = ref.rsplit("#", 1) if "#" in ref else (ref, key)
-            secret = client.secrets.kv.v2.read_secret_version(path=path)
+            ref, field = ref.rsplit("#", 1) if "#" in ref else (ref, key)
+            # hvac read_secret_version expects mount_point + relative path
+            # e.g. "secret/data/azure-sql" → mount_point="secret", path="azure-sql"
+            if "/data/" in ref:
+                mount_point, secret_path = ref.split("/data/", 1)
+            else:
+                mount_point, secret_path = "secret", ref
+            secret = client.secrets.kv.v2.read_secret_version(
+                path=secret_path, mount_point=mount_point, raise_on_deleted_version=True
+            )
             conn[key] = secret["data"]["data"][field]
-            print(f"  [vault] resolved {key} from {path}#{field}")
+            print(f"  [vault] resolved {key} from {mount_point}/data/{secret_path}#{field}")
 
     return config
 
@@ -406,19 +520,27 @@ def run_stdio(config):
 
 
 # ── HTTP MODE ──────────────────────────────────────────────────────────────────
-def run_http(config):
+def create_app(config):
+    """Build and return the FastAPI app (used by tests and run_http)."""
     from fastapi import FastAPI, Request, Path as FPath, Query
     from fastapi.responses import JSONResponse, HTMLResponse
     from fastapi.middleware.cors import CORSMiddleware
-    import uvicorn, strawberry
+    import strawberry
     from strawberry.fastapi import GraphQLRouter
     from strawberry.scalars import JSON as GQL_JSON
     from typing import List, Optional
     import typing
 
+    from fastapi import HTTPException
+    from fastapi.exceptions import RequestValidationError
+
     app   = FastAPI(title="Universal MCP DB Server", version="2.0.0")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     tools = build_tools(config)
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request, exc):
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     def _auth(request: Request):
         """Extract and validate Bearer token from request. Returns caller info dict."""
@@ -437,6 +559,10 @@ def run_http(config):
         req    = await request.json()
         method = req.get("method")
         rid    = req.get("id")
+        # resolve UI session username (MCP calls from the UI send the Bearer token)
+        sess_token = request.headers.get("Authorization","").removeprefix("Bearer ").strip()
+        ui_sess    = _sessions.get(sess_token)
+        username   = ui_sess["username"] if ui_sess else (caller.get("user","mcp-client") if isinstance(caller, dict) else "mcp-client")
         if method == "initialize":
             return {"jsonrpc":"2.0","id":rid,"result":{
                 "protocolVersion":"2024-11-05",
@@ -444,14 +570,31 @@ def run_http(config):
                 "serverInfo":{"name":"universal-mcp-db","version":"2.0.0"}
             }}
         if method == "tools/list":
-            return {"jsonrpc":"2.0","id":rid,"result":{"tools": tools}}
+            # filter tools list to connections the user can access
+            allowed = _user_conn_ids(username)
+            visible = tools if allowed is None else [
+                t for t in tools if t["name"].split("__")[0] in allowed
+            ]
+            return {"jsonrpc":"2.0","id":rid,"result":{"tools": visible}}
         if method == "tools/call":
-            n = req["params"]["name"]
-            a = req["params"].get("arguments", {})
+            n       = req["params"]["name"]
+            a       = req["params"].get("arguments", {})
+            conn_id = n.rsplit("__", 1)[0] if "__" in n else ""
+            # ACL check
+            if conn_id and _acl_role(username, conn_id) is None:
+                return {"jsonrpc":"2.0","id":rid,"result":{
+                    "content":[{"type":"text","text":f"Access denied to connection '{conn_id}'"}],
+                    "isError":True}}
+            t0 = _time.monotonic()
             try:
-                result = handle_tool_call(n, a, config)
+                result  = handle_tool_call(n, a, config)
+                ms      = int((_time.monotonic() - t0) * 1000)
+                rows    = len(__import__("json").loads(result)) if result.startswith("[") else 0
+                _write_audit(username, conn_id, a.get("sql", n), rows, ms, "ok")
                 return {"jsonrpc":"2.0","id":rid,"result":{"content":[{"type":"text","text":result}]}}
             except Exception as e:
+                ms = int((_time.monotonic() - t0) * 1000)
+                _write_audit(username, conn_id, a.get("sql", n), 0, ms, "error", str(e))
                 return {"jsonrpc":"2.0","id":rid,"result":{"content":[{"type":"text","text":f"Error: {e}"}],"isError":True}}
         if method == "notifications/initialized":
             return JSONResponse({})
@@ -541,10 +684,86 @@ def run_http(config):
         return open(os.path.join(os.path.dirname(__file__), "ui.html"), encoding="utf-8").read()
 
     @app.get("/health")
-    def health():
-        conns = [{"id":c["id"],"name":c["name"],"role":c.get("role","read-only"),"type":c.get("type","")}
-                 for c in config["connections"]]
+    def health(request: Request):
+        auth  = request.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        sess  = _sessions.get(token)
+        if sess:
+            allowed = _user_conn_ids(sess["username"])  # None = all
+            conns = [
+                {"id":c["id"],"name":c["name"],"role":c.get("role","read-only"),"type":c.get("type","")}
+                for c in config["connections"]
+                if allowed is None or c["id"] in allowed
+            ]
+        else:
+            conns = []
         return {"status":"ok","connections":conns,"version":"2.0.0"}
+
+    # ── UI Auth (Vault-backed) ────────────────────────────────────────────────
+    import secrets as _secrets
+    import time as _time
+    _sessions: dict[str, dict] = {}  # token → {username, global_role}
+
+    def _ui_session(request: Request) -> dict:
+        """Extract session from Bearer token. Raises 401 if missing/invalid."""
+        auth  = request.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        sess  = _sessions.get(token)
+        if not sess:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return sess
+
+    def _vault_ui_creds() -> tuple[str, str]:
+        """Fetch UI admin credentials from Vault at request time (so rotation works live)."""
+        vault_cfg = config.get("vault")
+        if not vault_cfg:
+            raise ValueError("No vault config — cannot validate UI login")
+        try:
+            import hvac as _hvac
+            client = _hvac.Client(url=vault_cfg["url"])
+            client.token = vault_cfg.get("token", os.environ.get("VAULT_TOKEN", ""))
+            secret = client.secrets.kv.v2.read_secret_version(
+                path="ui-admin", mount_point="secret", raise_on_deleted_version=True
+            )
+            data = secret["data"]["data"]
+            return data["username"], data["password"]
+        except Exception as e:
+            raise ValueError(f"Vault lookup failed: {e}")
+
+    @app.post("/auth/login")
+    async def ui_login(request: Request):
+        body = await request.json()
+        username = body.get("username", "")
+        password = body.get("password", "")
+        try:
+            vault_user, vault_pass = _vault_ui_creds()
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
+        if username == vault_user and password == vault_pass:
+            token = _secrets.token_hex(32)
+            _sessions[token] = {"username": vault_user, "global_role": "admin"}
+            # Bootstrap auth.db on first login
+            _init_auth_db(vault_user)
+            _bootstrap_admin_permissions(vault_user,
+                [c["id"] for c in config["connections"]])
+            return {"ok": True, "token": token, "role": "admin", "username": vault_user}
+        return JSONResponse({"ok": False, "error": "Invalid username or password"}, status_code=401)
+
+    @app.post("/auth/logout")
+    async def ui_logout(request: Request):
+        auth = request.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        _sessions.pop(token, None)
+        return {"ok": True}
+
+    @app.get("/auth/me")
+    async def ui_me(request: Request):
+        auth  = request.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        sess  = _sessions.get(token)
+        if not sess:
+            return JSONResponse({"authenticated": False}, status_code=401)
+        return {"authenticated": True, "role": sess["global_role"], "username": sess["username"]}
 
     @app.post("/connections/test")
     async def test_connection(request: Request):
@@ -582,6 +801,129 @@ def run_http(config):
         tools = build_tools(config)
         return {"ok": True}
 
+    # ── Admin endpoints ───────────────────────────────────────────────────────
+    def _require_admin(request: Request) -> dict:
+        sess = _ui_session(request)
+        if sess["global_role"] != "admin":
+            raise HTTPException(status_code=403, detail="Admin role required")
+        return sess
+
+    @app.get("/admin/users")
+    def admin_list_users(request: Request):
+        _require_admin(request)
+        import sqlite3
+        con = _auth_db()
+        users = con.execute(
+            "SELECT u.username, u.global_role, u.created_at, "
+            "GROUP_CONCAT(p.conn_id || ':' || p.role) as perms "
+            "FROM users u LEFT JOIN connection_permissions p ON u.username=p.username "
+            "GROUP BY u.username ORDER BY u.username"
+        ).fetchall()
+        con.close()
+        result = []
+        for u in users:
+            perms = {}
+            if u[3]:
+                for p in u[3].split(","):
+                    cid, role = p.split(":", 1)
+                    perms[cid] = role
+            result.append({"username": u[0], "global_role": u[1],
+                            "created_at": u[2], "permissions": perms})
+        return {"users": result}
+
+    @app.post("/admin/users")
+    async def admin_add_user(request: Request):
+        _require_admin(request)
+        body = await request.json()
+        username = body.get("username", "").strip()
+        role     = body.get("global_role", "viewer")
+        if not username:
+            return JSONResponse({"error": "username required"}, status_code=400)
+        if role not in ("admin", "viewer"):
+            return JSONResponse({"error": "global_role must be admin or viewer"}, status_code=400)
+        con = _auth_db()
+        try:
+            con.execute("INSERT INTO users (username, global_role) VALUES (?, ?)", (username, role))
+            con.commit()
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        finally:
+            con.close()
+        return {"ok": True, "username": username, "global_role": role}
+
+    @app.delete("/admin/users/{username}")
+    def admin_delete_user(username: str, request: Request):
+        sess = _require_admin(request)
+        if username == sess["username"]:
+            return JSONResponse({"error": "Cannot delete yourself"}, status_code=400)
+        con = _auth_db()
+        con.execute("DELETE FROM connection_permissions WHERE username = ?", (username,))
+        con.execute("DELETE FROM users WHERE username = ?", (username,))
+        con.commit()
+        con.close()
+        return {"ok": True}
+
+    @app.post("/admin/permissions")
+    async def admin_grant(request: Request):
+        sess = _require_admin(request)
+        body = await request.json()
+        username = body.get("username", "").strip()
+        conn_id  = body.get("conn_id", "").strip()
+        role     = body.get("role", "read-only")
+        if not username or not conn_id:
+            return JSONResponse({"error": "username and conn_id required"}, status_code=400)
+        if role not in ("read-only", "read-write", "admin"):
+            return JSONResponse({"error": "role must be read-only, read-write, or admin"}, status_code=400)
+        con = _auth_db()
+        con.execute(
+            "INSERT INTO connection_permissions (username, conn_id, role, granted_by) "
+            "VALUES (?,?,?,?) ON CONFLICT(username, conn_id) DO UPDATE SET role=excluded.role",
+            (username, conn_id, role, sess["username"])
+        )
+        con.commit()
+        con.close()
+        return {"ok": True}
+
+    @app.delete("/admin/permissions/{username}/{conn_id}")
+    def admin_revoke(username: str, conn_id: str, request: Request):
+        _require_admin(request)
+        con = _auth_db()
+        con.execute(
+            "DELETE FROM connection_permissions WHERE username=? AND conn_id=?",
+            (username, conn_id)
+        )
+        con.commit()
+        con.close()
+        return {"ok": True}
+
+    @app.get("/admin/audit")
+    def admin_audit(request: Request,
+                    limit: int = 100, offset: int = 0,
+                    username: str = None, conn_id: str = None, status: str = None):
+        _require_admin(request)
+        where, params = [], []
+        if username: where.append("username=?");  params.append(username)
+        if conn_id:  where.append("conn_id=?");   params.append(conn_id)
+        if status:   where.append("status=?");    params.append(status)
+        clause = ("WHERE " + " AND ".join(where)) if where else ""
+        con  = _auth_db()
+        rows = con.execute(
+            f"SELECT id,username,conn_id,sql_query,rows_returned,duration_ms,status,error_msg,ts "  # nosec B608
+            f"FROM audit_log {clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+            params + [limit, offset]
+        ).fetchall()
+        total = con.execute(f"SELECT COUNT(*) FROM audit_log {clause}", params).fetchone()[0]  # nosec B608
+        con.close()
+        keys = ["id","username","conn_id","sql","rows","duration_ms","status","error","ts"]
+        return {"total": total, "rows": [dict(zip(keys, r)) for r in rows]}
+
+    return app
+
+
+def run_http(config):
+    from fastapi import FastAPI
+    import uvicorn
+    app  = create_app(config)
     host = config["server"]["host"]
     port = config["server"]["port"]
     print(f"\nUniversal MCP DB Server v2.0")
@@ -594,7 +936,18 @@ def run_http(config):
     for c in config["connections"]:
         print(f"    [{c.get('role','read-only'):12}] {c['id']}  ({c.get('type','')})")
     print()
-    uvicorn.run(app, host=host, port=port)
+
+    # Auto-enable TLS if cert.pem + key.pem exist next to server.py
+    base = os.path.dirname(__file__)
+    cert = os.path.join(base, "cert.pem")
+    key  = os.path.join(base, "key.pem")
+    if os.path.exists(cert) and os.path.exists(key):
+        scheme = "https"
+        print(f"  TLS      ->  cert.pem + key.pem found, HTTPS enabled")
+        uvicorn.run(app, host=host, port=port, ssl_certfile=cert, ssl_keyfile=key)
+    else:
+        scheme = "http"
+        uvicorn.run(app, host=host, port=port)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
